@@ -10,11 +10,11 @@ import (
 	"io/ioutil"
 )
 
-type Request struct {
-	Method string
-	Key string
+type request struct {
+	method string
+	key string
 	value_len int
-	Body io.ReadCloser
+	value []byte
 }
 
 type badStringError struct {
@@ -26,10 +26,10 @@ type badStringError struct {
 func (e *badStringError) Error() string { return fmt.Sprintf("%s %q", e.what, e.str) }
 
 
-func ReadRequest(b *bufio.Reader) (req *Request, err error) {
+func readRequest(b *bufio.Reader) (req *request, err error) {
 
 	tp := textproto.NewReader(b)
-	req = new(Request)
+	req = new(request)
 
 	var s string
 	if s, err = tp.ReadLine(); err != nil {
@@ -46,16 +46,19 @@ func ReadRequest(b *bufio.Reader) (req *Request, err error) {
 		return nil, &badStringError{"malformed agent request", s}
 	}
 
-	req.Method, req.Key = f[0], f[1]
+	req.method, req.key = f[0], f[1]
 
-	if req.Method == "set" {
+	if req.method == "set" {
 		var err error
 		req.value_len, err = strconv.Atoi(f[2])
 		if err != nil {
 			return nil, &badStringError{"data size is invalid", ""}
 		}
 
-		ioutil.ReadAll(req.Body)
+		req.value, err = ioutil.ReadAll(io.LimitReader(b, int64(req.value_len)))
+		if err != nil {
+			return nil, nil
+		}
 	}
 
 	return req, nil

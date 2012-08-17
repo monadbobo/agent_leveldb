@@ -56,7 +56,7 @@ func (e ldb_error) Error() string {
 }
 
 
-func Open(options *Options, name string)  (*Db, error) {
+func Open( name string, options *Options)  (*Db, error) {
 	var db_err *C.char
 
 	db_name := C.CString(name)
@@ -70,7 +70,7 @@ func Open(options *Options, name string)  (*Db, error) {
 	return &Db{ldb}, nil
 }
 
-func (ldb *Db) Put(w_options *Writeoptions, key, value []byte) error {
+func (ldb *Db) Put(key, value []byte, w_options *Writeoptions) error {
 	var db_err *C.char
 	
 	key_len := len(key)
@@ -94,7 +94,7 @@ func (ldb *Db) Put(w_options *Writeoptions, key, value []byte) error {
 	return nil
 }
 
-func (ldb *Db) Get(read_option *Readoptions, key []byte) ([]byte, error) {
+func (ldb *Db) Get(key []byte, read_option *Readoptions) ([]byte, error) {
 	var db_err *C.char
 	var value_len C.size_t
 
@@ -118,7 +118,7 @@ func (ldb *Db) Get(read_option *Readoptions, key []byte) ([]byte, error) {
 	return C.GoBytes(unsafe.Pointer(value), C.int(value_len)), nil
 }
 
-func (ldb *Db) Delete(w_options *Writeoptions, key []byte) error  {
+func (ldb *Db) Delete(key []byte, w_options *Writeoptions) error  {
 	var db_err *C.char
 	
 	key_len := len(key)

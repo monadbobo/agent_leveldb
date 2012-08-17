@@ -35,6 +35,24 @@ func Create_write_options() *Writeoptions {
 	return &Writeoptions{option}
 }
 
+func (option *Options) Set_create_if_missing(flag bool) {
+	if flag {
+		C.leveldb_options_set_create_if_missing(option.options, C.uchar(1))
+	} else {
+		C.leveldb_options_set_create_if_missing(option.options, C.uchar(0))
+	}
+
+}
+
+func (option *Options) Set_create_if_exists(flag bool) {
+	if flag {
+		C.leveldb_options_set_error_if_exists(option.options, C.uchar(1))
+	} else {
+		C.leveldb_options_set_error_if_exists(option.options, C.uchar(0))
+	}
+
+}
+
 func (option *Options) Destroy_options() {
 	C.leveldb_options_destroy(option.options)
 }
