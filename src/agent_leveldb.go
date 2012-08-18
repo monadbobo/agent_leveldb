@@ -1,4 +1,3 @@
-
 /*
  * Copyright (C) Simon Liu
  * Email: simohayha.bobo@gmail.com
@@ -7,11 +6,11 @@
 package main
 
 import (
-	"os"
 	"agent_server"
-	"log"
 	"flag"
 	"fmt"
+	"log"
+	"os"
 )
 
 var (

@@ -14,7 +14,7 @@ type response struct {
 	status_code int
 	status_text string
 	body        []byte
-	error       int
+	error       bool
 }
 
 type store struct {
@@ -27,7 +27,7 @@ type store struct {
 type conn struct {
 	remoteAddr string
 	rwc        net.Conn
-	rw        *bufio.ReadWriter
+	rw         *bufio.ReadWriter
 	s          *store
 }
 
@@ -70,24 +70,21 @@ func Run_server(laddr string) error {
 			return err
 		}
 
-		log.Println("accept success")
-		c, err := newConn(conn, store)
-		if err != nil {
-			continue
-		}
+		c := newConn(conn, store)
 
+		log.Print("accept successed, client ip is %s", c.remoteAddr)
 		go c.serve()
 	}
 	panic("not reached")
 }
 
-func newConn(rwc net.Conn, s *store) (c *conn, err error) {
+func newConn(rwc net.Conn, s *store) (c *conn) {
 	c = new(conn)
 	c.remoteAddr = rwc.RemoteAddr().String()
 	c.s = s
 	c.rwc = rwc
 	c.rw = bufio.NewReadWriter(bufio.NewReader(rwc), bufio.NewWriter(rwc))
-	return c, nil
+	return c
 }
 
 func (c *conn) serve() {
@@ -108,31 +105,35 @@ func (c *conn) serve() {
 
 	for {
 		res, err := c.readRequest()
-		if err != nil {
+		if err != nil && res == nil {
 			log.Println("read request error %s", err)
 			break
 		}
+
+		if err == nil && res.req.noreply {
+			continue
+		}
+
 		c.handle_request(res)
 		err = c.output(res)
 		if err != nil {
 			log.Println("output failed %s", err)
 		}
-		
 	}
 	c.close()
 }
 
-
 func (c *conn) readRequest() (res *response, err error) {
-	var req *request
-	
 	res = new(response)
 
-	if req, err = readRequest(c.rw.Reader); err != nil {
+	if res.req, err = readRequest(c.rw.Reader); err != nil {
+		if res.req != nil {
+			res.error = true
+			return res, err
+		}
 		return nil, err
 	}
 
-	res.req = req
 	return res, nil
 }
 
@@ -144,11 +145,20 @@ func (c *conn) close() {
 }
 
 func (c *conn) handle_request(res *response) {
+
+	if res.error {
+		res.status_code = 403
+		res.status_text = "CLIENT_ERROR"
+		return
+	}
+
 	switch {
 	case res.req.method == "get":
 		data, err := c.s.db.Get([]byte(res.req.key), c.s.ro)
 		if err != nil {
-			res.error = 1
+			res.status_code = 500
+			res.status_text = "SERVER_ERROR"
+			res.error = true
 			return
 		}
 
@@ -164,7 +174,9 @@ func (c *conn) handle_request(res *response) {
 	case res.req.method == "set":
 		err := c.s.db.Put([]byte(res.req.key), res.req.value, c.s.wo)
 		if err != nil {
-			res.error = 1
+			res.status_code = 500
+			res.status_text = "SERVER_ERROR"
+			res.error = true
 			return
 		}
 
@@ -173,7 +185,9 @@ func (c *conn) handle_request(res *response) {
 	case res.req.method == "delete":
 		err := c.s.db.Delete([]byte(res.req.key), c.s.wo)
 		if err != nil {
-			res.error = 1
+			res.status_code = 500
+			res.status_text = "SERVER_ERROR"
+			res.error = true
 			return
 		}
 		res.status_code = 200
@@ -200,7 +214,7 @@ func (c *conn) output(res *response) error {
 			return err
 		}
 	}
-	
+
 	c.rw.Flush()
 	return nil
 }

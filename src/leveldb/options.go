@@ -9,15 +9,15 @@ package leveldb
 import "C"
 
 type Options struct {
-	options    *C.leveldb_options_t
+	options *C.leveldb_options_t
 }
 
 type Readoptions struct {
-	options    *C.leveldb_readoptions_t
+	options *C.leveldb_readoptions_t
 }
 
 type Writeoptions struct {
-	options    *C.leveldb_writeoptions_t
+	options *C.leveldb_writeoptions_t
 }
 
 func Create_options() *Options {
@@ -50,7 +50,6 @@ func (option *Options) Set_create_if_exists(flag bool) {
 	} else {
 		C.leveldb_options_set_error_if_exists(option.options, C.uchar(0))
 	}
-
 }
 
 func (option *Options) Destroy_options() {
