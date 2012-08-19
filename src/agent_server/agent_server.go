@@ -4,18 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"leveldb"
 	"log"
 	"net"
+	"strconv"
 )
-
-type response struct {
-	req         *request
-	status_code int
-	status_text string
-	body        []byte
-	error       bool
-}
 
 type store struct {
 	db   *leveldb.Db
@@ -101,41 +95,33 @@ func (c *conn) serve() {
 		if c.rwc != nil {
 			c.rwc.Close()
 		}
+		c.close()
 	}()
 
 	for {
-		res, err := c.readRequest()
-		if err != nil && res == nil {
-			log.Println("read request error %s", err)
-			break
-		}
+		req, err := readRequest(c.rw.Reader)
 
-		if err == nil && res.req.noreply {
+		if err != nil {
+			msg := "CLIENT_ERROR"
+			if err == io.EOF {
+				break // Don't reply
+			} else if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
+				break // Don't reply
+			}
+			fmt.Fprintf(c.rwc, "%s %s\r\n", msg, err)
 			continue
 		}
 
-		c.handle_request(res)
-		err = c.output(res)
+		err = c.handle_request(req)
 		if err != nil {
-			log.Println("output failed %s", err)
+			log.Print("handle requesr error(%s)", err)
+			break
 		}
+		
+		c.rw.Flush()
 	}
-	c.close()
 }
 
-func (c *conn) readRequest() (res *response, err error) {
-	res = new(response)
-
-	if res.req, err = readRequest(c.rw.Reader); err != nil {
-		if res.req != nil {
-			res.error = true
-			return res, err
-		}
-		return nil, err
-	}
-
-	return res, nil
-}
 
 func (c *conn) close() {
 	if c.rwc != nil {
@@ -144,68 +130,41 @@ func (c *conn) close() {
 	}
 }
 
-func (c *conn) handle_request(res *response) {
-
-	if res.error {
-		res.status_code = 403
-		res.status_text = "CLIENT_ERROR"
-		return
-	}
-
-	switch {
-	case res.req.method == "get":
-		data, err := c.s.db.Get([]byte(res.req.key), c.s.ro)
-		if err != nil {
-			res.status_code = 500
-			res.status_text = "SERVER_ERROR"
-			res.error = true
-			return
-		}
-
-		if data == nil {
-			res.status_code = 404
-			res.status_text = "NOT_FOUND"
-		} else {
-			res.status_code = 200
-			res.status_text = "OK"
-			res.body = data
-		}
-
-	case res.req.method == "set":
-		err := c.s.db.Put([]byte(res.req.key), res.req.value, c.s.wo)
-		if err != nil {
-			res.status_code = 500
-			res.status_text = "SERVER_ERROR"
-			res.error = true
-			return
-		}
-
-		res.status_code = 200
-		res.status_text = "STORED"
-	case res.req.method == "delete":
-		err := c.s.db.Delete([]byte(res.req.key), c.s.wo)
-		if err != nil {
-			res.status_code = 500
-			res.status_text = "SERVER_ERROR"
-			res.error = true
-			return
-		}
-		res.status_code = 200
-		res.status_text = "DELETED"
-	}
-}
-
-func (c *conn) output(res *response) error {
-	_, err := c.rw.WriteString(res.status_text)
+func (c *conn) write_status(status string) error {
+	_, err := c.rw.WriteString(status)
 	if err != nil {
 		return err
 	}
 	_, err = c.rw.WriteString("\r\n")
-	if err != nil {
-		return err
-	}
-	if len(res.body) != 0 {
-		_, err = c.rw.Write(res.body)
+	return err
+}
+
+func (c *conn) handle_request(req *request) error {
+
+	switch {
+	case req.method == "get":
+		data, err := c.s.db.Get([]byte(req.key), c.s.ro)
+		if err != nil {
+			err := c.write_status("SERVER_ERROR")
+			return err
+		}
+
+		if data == nil {
+			err := c.write_status("NOT_FOUND")
+			return err
+		}
+
+		_, err = c.rw.WriteString(req.key)
+		if err != nil {
+			return err
+		}
+
+		_, err = c.rw.WriteString(" ")
+		if err != nil {
+			return err
+		}
+
+		_, err = c.rw.WriteString(strconv.Itoa(len(data)))
 		if err != nil {
 			return err
 		}
@@ -213,8 +172,27 @@ func (c *conn) output(res *response) error {
 		if err != nil {
 			return err
 		}
-	}
+		_, err = c.rw.WriteString("END\r\n")
+		return err
 
-	c.rw.Flush()
-	return nil
+	case req.method == "set":
+		err := c.s.db.Put([]byte(req.key), req.value, c.s.wo)
+		if err != nil {
+			err := c.write_status("SERVER_ERROR")
+			return err
+		}
+
+		err = c.write_status("STORED")
+		return err
+	case req.method == "delete":
+		err := c.s.db.Delete([]byte(req.key), c.s.wo)
+		if err != nil {
+			err := c.write_status("NOT_FOUND")
+			return err
+		}
+		err = c.write_status("DELETED")
+		return err
+	}
+	err := c.write_status("ERROR")
+	return err
 }

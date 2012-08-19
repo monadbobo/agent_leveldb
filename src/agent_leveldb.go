@@ -15,7 +15,7 @@ import (
 
 var (
 	laddr       = flag.String("l", "127.0.0.1:8046", "The address to bind to.")
-	showVersion = flag.Bool("v", false, "print memcached_go's version string")
+	showVersion = flag.Bool("v", false, "print agent_leveldb's version string")
 )
 
 func Usage() {
@@ -40,7 +40,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.SetPrefix("GO_MEMCACHED ")
+	log.SetPrefix("agent_leveldb ")
 	log.SetFlags(log.Ldate | log.Lmicroseconds)
 
 	agent_server.Run_server(*laddr)

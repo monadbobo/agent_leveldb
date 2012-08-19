@@ -60,12 +60,12 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 		var err error
 
 		if param_count < 3 || param_count > 4 {
-			return req, &badStringError{"invalid request param count", ""}
+			return req, &badStringError{"invalid request param count", string(param_count)}
 		}
 
 		req.value_len, err = strconv.Atoi(f[2])
 		if err != nil {
-			return req, &badStringError{"data size is invalid", ""}
+			return req, &badStringError{"data size is invalid", f[2]}
 		}
 
 		if param_count == 4 {
@@ -76,7 +76,7 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 		}
 
 		if req.value_len > max_value_size {
-			return req, &badStringError{"invalid data size", ""}
+			return req, &badStringError{"invalid data size", string(req.value_len)}
 		}
 
 		req.value, err = ioutil.ReadAll(io.LimitReader(b, int64(req.value_len)))
@@ -85,7 +85,7 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 		}
 	} else {
 		if param_count > 3 {
-			return req, &badStringError{"invalid request param count", ""}
+			return req, &badStringError{"invalid request param count", string(param_count)}
 		}
 
 		if param_count == 3 {

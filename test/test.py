@@ -23,3 +23,7 @@ print data
 s.send("get test1\r\n")
 data = s.recv(1024)
 print data
+
+s.send("delete test1\r\n")
+data = s.recv(1024)
+print data
