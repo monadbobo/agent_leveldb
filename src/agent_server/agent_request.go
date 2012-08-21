@@ -8,11 +8,13 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type request struct {
 	method    string
 	key       string
+	exptime   time.Duration
 	value_len int
 	value     []byte
 	noreply   bool
@@ -59,17 +61,22 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 	if req.method == "set" {
 		var err error
 
-		if param_count < 3 || param_count > 4 {
+		if param_count < 4 || param_count > 5 {
 			return req, &badStringError{"invalid request param count", string(param_count)}
 		}
 
-		req.value_len, err = strconv.Atoi(f[2])
+		req.exptime, err = time.ParseDuration(f[2])
 		if err != nil {
-			return req, &badStringError{"data size is invalid", f[2]}
+			return req, &badStringError{"expire time is invalid", f[2]}
 		}
 
-		if param_count == 4 {
-			err = req.set_noreply(f[3])
+		req.value_len, err = strconv.Atoi(f[3])
+		if err != nil {
+			return req, &badStringError{"data size is invalid", f[3]}
+		}
+
+		if param_count == 5 {
+			err = req.set_noreply(f[4])
 			if err != nil {
 				return req, err
 			}

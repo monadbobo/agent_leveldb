@@ -9,7 +9,13 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"time"
 )
+
+type action struct {
+	key     string
+	exptime time.Duration
+}
 
 type store struct {
 	db   *leveldb.Db
@@ -117,11 +123,10 @@ func (c *conn) serve() {
 			log.Print("handle requesr error(%s)", err)
 			break
 		}
-		
+
 		c.rw.Flush()
 	}
 }
-
 
 func (c *conn) close() {
 	if c.rwc != nil {
@@ -183,6 +188,12 @@ func (c *conn) handle_request(req *request) error {
 		}
 
 		err = c.write_status("STORED")
+		if req.exptime != 0 {
+			ac := make(chan action)
+			go process_action(ac, c.s)
+			ac <- action{req.key, req.exptime}
+		}
+
 		return err
 	case req.method == "delete":
 		err := c.s.db.Delete([]byte(req.key), c.s.wo)
@@ -195,4 +206,15 @@ func (c *conn) handle_request(req *request) error {
 	}
 	err := c.write_status("ERROR")
 	return err
+}
+
+func process_action(ac chan action, s *store) {
+	ch := make(chan bool, 2)
+	a := <-ac
+	timer := time.AfterFunc(a.exptime, func() {
+		s.db.Delete([]byte(a.key), s.wo)
+		ch <- true
+	})
+	defer timer.Stop()
+	<-ch
 }

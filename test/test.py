@@ -15,7 +15,7 @@ except socket.error, msg:
         print msg
         sys.exit(1)
 
-s.send("set test1 4\r\n")
+s.send("set test1 0 4\r\n")
 s.send("test")
 data = s.recv(1024)
 print data
@@ -25,5 +25,21 @@ data = s.recv(1024)
 print data
 
 s.send("delete test1\r\n")
+data = s.recv(1024)
+print data
+
+# exptime
+s.send("set test2 3s 4\r\n")
+s.send("test")
+data = s.recv(1024)
+print data
+
+s.send("get test2\r\n")
+data = s.recv(1024)
+print data
+
+time.sleep(4)
+
+s.send("get test2\r\n")
 data = s.recv(1024)
 print data
