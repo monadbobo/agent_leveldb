@@ -146,57 +146,91 @@ func (c *conn) write_status(status string) error {
 
 func (c *conn) handle_request(req *request) error {
 
-	switch {
-	case req.method == "get":
-		data, err := c.s.db.Get([]byte(req.key), c.s.ro)
+	switch req.method {
+	case "get":
+		for _, key := range req.key {
+			data, err := c.s.db.Get([]byte(key), c.s.ro)
+			if err != nil {
+				err := c.write_status("SERVER_ERROR")
+				if err != nil {
+					return err
+				}
+				continue
+			}
+
+			if data == nil {
+				err := c.write_status("NOT_FOUND")
+				return err
+			}
+
+			_, err = c.rw.WriteString(key)
+			if err != nil {
+				return err
+			}
+
+			_, err = c.rw.WriteString(" ")
+			if err != nil {
+				return err
+			}
+
+			_, err = c.rw.WriteString(strconv.Itoa(len(data)))
+			if err != nil {
+				return err
+			}
+			_, err = c.rw.WriteString("\r\n")
+			if err != nil {
+				return err
+			}
+
+			_, err = c.rw.Write(data)
+			if err != nil {
+				return err
+			}
+
+			_, err = c.rw.WriteString("\r\n")
+			if err != nil {
+				return err
+			}
+		}
+
+		_, err := c.rw.WriteString("END\r\n")
+		return err
+
+	case "add":
+		data, err := c.s.db.Get([]byte(req.key[0]), c.s.ro)
 		if err != nil {
 			err := c.write_status("SERVER_ERROR")
-			return err
+			if err != nil {
+				return err
+			}
+			break
 		}
 
 		if data == nil {
-			err := c.write_status("NOT_FOUND")
-			return err
+			return c.set(req)
 		}
 
-		_, err = c.rw.WriteString(req.key)
-		if err != nil {
-			return err
-		}
+		return c.write_status("NOT_STORED")
+	case "replace":
 
-		_, err = c.rw.WriteString(" ")
-		if err != nil {
-			return err
-		}
-
-		_, err = c.rw.WriteString(strconv.Itoa(len(data)))
-		if err != nil {
-			return err
-		}
-		_, err = c.rw.WriteString("\r\n")
-		if err != nil {
-			return err
-		}
-		_, err = c.rw.WriteString("END\r\n")
-		return err
-
-	case req.method == "set":
-		err := c.s.db.Put([]byte(req.key), req.value, c.s.wo)
+		data, err := c.s.db.Get([]byte(req.key[0]), c.s.ro)
 		if err != nil {
 			err := c.write_status("SERVER_ERROR")
-			return err
+			if err != nil {
+				return err
+			}
+			break
 		}
 
-		err = c.write_status("STORED")
-		if req.exptime != 0 {
-			ac := make(chan action)
-			go process_action(ac, c.s)
-			ac <- action{req.key, req.exptime}
+		if data != nil {
+			return c.set(req)
 		}
+		return c.write_status("NOT_STORED")
 
-		return err
-	case req.method == "delete":
-		err := c.s.db.Delete([]byte(req.key), c.s.wo)
+	case "set":
+		return c.set(req)
+	case "delete":
+		err := c.s.db.Delete([]byte(req.key[0]), c.s.wo)
 		if err != nil {
 			err := c.write_status("NOT_FOUND")
 			return err
@@ -217,4 +251,21 @@ func process_action(ac chan action, s *store) {
 	})
 	defer timer.Stop()
 	<-ch
+}
+
+func (c *conn) set(req *request) error {
+	err := c.s.db.Put([]byte(req.key[0]), req.value, c.s.wo)
+	if err != nil {
+		err := c.write_status("SERVER_ERROR")
+		return err
+	}
+
+	err = c.write_status("STORED")
+	if req.exptime != 0 {
+		ac := make(chan action)
+		go process_action(ac, c.s)
+		ac <- action{req.key[0], req.exptime}
+	}
+
+	return err
 }
