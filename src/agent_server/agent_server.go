@@ -9,12 +9,14 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 )
 
 type server struct {
-	s  *store
-	kt map[string]chan action
+	s    *store
+	lock *sync.RWMutex
+	kt   map[string]chan action
 }
 
 type action struct {
@@ -70,6 +72,7 @@ func Run_server(laddr string) error {
 
 	sv.s = store
 	sv.kt = make(map[string]chan action)
+	sv.lock = new(sync.RWMutex)
 	defer store.db.Close()
 	for {
 		conn, err := listen_sock.Accept()
@@ -257,8 +260,10 @@ func (c *conn) handle_request(req *request) error {
 		}
 
 		if data != nil {
+			c.sv.lock.RLock()
 			ac := c.sv.kt[req.key[0]]
 			ac <- action{req.key[0], req.exptime}
+			c.sv.lock.RUnlock()
 			err = c.write_status("TOUCHED")
 			return err
 		}
@@ -276,9 +281,11 @@ func process_action(ac chan action, sv *server) {
 		if timer != nil {
 			timer.Stop()
 		}
+		sv.lock.Lock()
 		delete(sv.kt, a.key)
-		close(ch)
 		close(ac)
+		sv.lock.Unlock()
+		close(ch)
 	}()
 	for {
 		select {
