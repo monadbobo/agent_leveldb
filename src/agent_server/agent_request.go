@@ -114,6 +114,16 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 				return req, err
 			}
 		}
+	case "touch":
+		if param_count > 3 {
+			return req, &badStringError{"invalid request param count", string(param_count)}
+		}
+		req.key = make([]string, 1)
+		req.key[0] = f[1]
+		req.exptime, err = time.ParseDuration(f[2])
+		if err != nil {
+			return req, &badStringError{"expire time is invalid", f[2]}
+		}
 	}
 
 	return req, nil

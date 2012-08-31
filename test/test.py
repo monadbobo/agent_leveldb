@@ -1,4 +1,3 @@
-
 import socket
 import time
 import sys
@@ -38,7 +37,17 @@ s.send("get test2\r\n")
 data = s.recv(1024)
 print data
 
+s.send("touch test2 6s\r\n")
+data = s.recv(1024)
+print data
+
 time.sleep(4)
+
+s.send("get test2\r\n")
+data = s.recv(1024)
+print data
+
+time.sleep(3)
 
 s.send("get test2\r\n")
 data = s.recv(1024)

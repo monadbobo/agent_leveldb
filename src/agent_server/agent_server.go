@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+type server struct {
+	s  *store
+	kt map[string]chan action
+}
+
 type action struct {
 	key     string
 	exptime time.Duration
@@ -28,7 +33,7 @@ type conn struct {
 	remoteAddr string
 	rwc        net.Conn
 	rw         *bufio.ReadWriter
-	s          *store
+	sv         *server
 }
 
 func newLeveldb() (*store, error) {
@@ -57,11 +62,14 @@ func Run_server(laddr string) error {
 		panic(err)
 	}
 
+	sv := new(server)
 	store, err := newLeveldb()
 	if err != nil {
 		panic(err)
 	}
 
+	sv.s = store
+	sv.kt = make(map[string]chan action)
 	defer store.db.Close()
 	for {
 		conn, err := listen_sock.Accept()
@@ -70,7 +78,7 @@ func Run_server(laddr string) error {
 			return err
 		}
 
-		c := newConn(conn, store)
+		c := newConn(conn, sv)
 
 		log.Print("accept successed, client ip is %s", c.remoteAddr)
 		go c.serve()
@@ -78,10 +86,10 @@ func Run_server(laddr string) error {
 	panic("not reached")
 }
 
-func newConn(rwc net.Conn, s *store) (c *conn) {
+func newConn(rwc net.Conn, sv *server) (c *conn) {
 	c = new(conn)
 	c.remoteAddr = rwc.RemoteAddr().String()
-	c.s = s
+	c.sv = sv
 	c.rwc = rwc
 	c.rw = bufio.NewReadWriter(bufio.NewReader(rwc), bufio.NewWriter(rwc))
 	return c
@@ -149,7 +157,7 @@ func (c *conn) handle_request(req *request) error {
 	switch req.method {
 	case "get":
 		for _, key := range req.key {
-			data, err := c.s.db.Get([]byte(key), c.s.ro)
+			data, err := c.sv.s.db.Get([]byte(key), c.sv.s.ro)
 			if err != nil {
 				err := c.write_status("SERVER_ERROR")
 				if err != nil {
@@ -197,7 +205,7 @@ func (c *conn) handle_request(req *request) error {
 		return err
 
 	case "add":
-		data, err := c.s.db.Get([]byte(req.key[0]), c.s.ro)
+		data, err := c.sv.s.db.Get([]byte(req.key[0]), c.sv.s.ro)
 		if err != nil {
 			err := c.write_status("SERVER_ERROR")
 			if err != nil {
@@ -213,7 +221,7 @@ func (c *conn) handle_request(req *request) error {
 		return c.write_status("NOT_STORED")
 	case "replace":
 
-		data, err := c.s.db.Get([]byte(req.key[0]), c.s.ro)
+		data, err := c.sv.s.db.Get([]byte(req.key[0]), c.sv.s.ro)
 		if err != nil {
 			err := c.write_status("SERVER_ERROR")
 			if err != nil {
@@ -230,31 +238,68 @@ func (c *conn) handle_request(req *request) error {
 	case "set":
 		return c.set(req)
 	case "delete":
-		err := c.s.db.Delete([]byte(req.key[0]), c.s.wo)
+		err := c.sv.s.db.Delete([]byte(req.key[0]), c.sv.s.wo)
 		if err != nil {
 			err := c.write_status("NOT_FOUND")
 			return err
 		}
 		err = c.write_status("DELETED")
 		return err
+
+	case "touch":
+		data, err := c.sv.s.db.Get([]byte(req.key[0]), c.sv.s.ro)
+		if err != nil {
+			err := c.write_status("SERVER_ERROR")
+			if err != nil {
+				return err
+			}
+			break
+		}
+
+		if data != nil {
+			ac := c.sv.kt[req.key[0]]
+			ac <- action{req.key[0], req.exptime}
+			err = c.write_status("TOUCHED")
+			return err
+		}
+		return c.write_status("NOT_FOUND")
 	}
 	err := c.write_status("ERROR")
 	return err
 }
 
-func process_action(ac chan action, s *store) {
+func process_action(ac chan action, sv *server) {
+	var a action
+	var timer *time.Timer
 	ch := make(chan bool, 2)
-	a := <-ac
-	timer := time.AfterFunc(a.exptime, func() {
-		s.db.Delete([]byte(a.key), s.wo)
-		ch <- true
-	})
-	defer timer.Stop()
-	<-ch
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+		delete(sv.kt, a.key)
+		close(ch)
+		close(ac)
+	}()
+	for {
+		select {
+		case a = <-ac:
+			if timer != nil {
+				timer.Stop()
+			}
+			timer = time.AfterFunc(a.exptime, func() {
+				sv.s.db.Delete([]byte(a.key), sv.s.wo)
+				ch <- true
+			})
+
+		case <-ch:
+			log.Print("delete successed")
+			return
+		}
+	}
 }
 
 func (c *conn) set(req *request) error {
-	err := c.s.db.Put([]byte(req.key[0]), req.value, c.s.wo)
+	err := c.sv.s.db.Put([]byte(req.key[0]), req.value, c.sv.s.wo)
 	if err != nil {
 		err := c.write_status("SERVER_ERROR")
 		return err
@@ -263,7 +308,8 @@ func (c *conn) set(req *request) error {
 	err = c.write_status("STORED")
 	if req.exptime != 0 {
 		ac := make(chan action)
-		go process_action(ac, c.s)
+		c.sv.kt[req.key[0]] = ac
+		go process_action(ac, c.sv)
 		ac <- action{req.key[0], req.exptime}
 	}
 
