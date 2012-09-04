@@ -1,12 +1,11 @@
 package agent_server
 
 import (
+	"code.google.com/p/vitess/go/relog"
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"leveldb"
-	"log"
 	"net"
 	"strconv"
 	"sync"
@@ -77,13 +76,13 @@ func Run_server(laddr string) error {
 	for {
 		conn, err := listen_sock.Accept()
 		if err != nil {
-			log.Println(err)
-			return err
+			relog.Warning("%s", err)
+			continue
 		}
 
 		c := newConn(conn, sv)
 
-		log.Print("accept successed, client ip is %s", c.remoteAddr)
+		relog.Info("accept successed, client ip is %s", c.remoteAddr)
 		go c.serve()
 	}
 	panic("not reached")
@@ -105,9 +104,7 @@ func (c *conn) serve() {
 			return
 		}
 
-		var buf bytes.Buffer
-		fmt.Fprintf(&buf, "panic serving %v: %v\n", c.remoteAddr, err)
-		log.Print(buf.String())
+		relog.Error("panic serving %v: %v\n", c.remoteAddr, err)
 
 		if c.rwc != nil {
 			c.rwc.Close()
@@ -131,7 +128,7 @@ func (c *conn) serve() {
 
 		err = c.handle_request(req)
 		if err != nil {
-			log.Print("handle requesr error(%s)", err)
+			relog.Error("handle requesr error(%s)", err)
 			break
 		}
 
@@ -299,7 +296,7 @@ func process_action(ac chan action, sv *server) {
 			})
 
 		case <-ch:
-			log.Print("delete successed")
+			relog.Info("delete successed")
 			return
 		}
 	}

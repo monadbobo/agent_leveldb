@@ -7,9 +7,9 @@ package main
 
 import (
 	"agent_server"
+	"code.google.com/p/vitess/go/relog"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"runtime/pprof"
@@ -20,6 +20,7 @@ var (
 	laddr       = flag.String("l", "127.0.0.1:8046", "The address to bind to.")
 	showVersion = flag.Bool("v", false, "print agent_leveldb's version string")
 	cpuprofile  = flag.String("cpuprofile", "", "write cpu profile to file")
+	configFile  = flag.String("config", "", "config file name (json format)")
 )
 
 func Usage() {
@@ -38,6 +39,11 @@ func main() {
 		return
 	}
 
+	agent_server.Init("agent_leveldb")
+	if *configFile != "" {
+		agent_server.Parse_config(*configFile)
+	}
+
 	if *laddr == "" {
 		fmt.Fprintln(os.Stderr, "require a listen address")
 		flag.Usage()
@@ -47,14 +53,12 @@ func main() {
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
-			log.Fatal(err)
+			relog.Fatal("%s", err)
 		}
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
 
-	log.SetPrefix("agent_leveldb ")
-	log.SetFlags(log.Ldate | log.Lmicroseconds)
 	signal_init()
 
 	agent_server.Run_server(*laddr)
@@ -67,7 +71,7 @@ func signal_init() {
 		for sig := range c {
 			switch sig {
 			case syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT:
-				log.Println("Terminating on signal", sig)
+				relog.Warning("Terminating on signal", sig)
 				if *cpuprofile != "" {
 					pprof.StopCPUProfile()
 				}
