@@ -11,11 +11,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"runtime/pprof"
+	"syscall"
 )
 
 var (
 	laddr       = flag.String("l", "127.0.0.1:8046", "The address to bind to.")
 	showVersion = flag.Bool("v", false, "print agent_leveldb's version string")
+	cpuprofile  = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
 func Usage() {
@@ -40,8 +44,35 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	log.SetPrefix("agent_leveldb ")
 	log.SetFlags(log.Ldate | log.Lmicroseconds)
+	signal_init()
 
 	agent_server.Run_server(*laddr)
+}
+
+func signal_init() {
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for sig := range c {
+			switch sig {
+			case syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT:
+				log.Println("Terminating on signal", sig)
+				if *cpuprofile != "" {
+					pprof.StopCPUProfile()
+				}
+				os.Exit(0)
+			}
+		}
+	}()
 }
