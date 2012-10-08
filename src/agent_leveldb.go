@@ -35,7 +35,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("memcached version is %.2f\n", agent_server.Version)
+		fmt.Printf("agent_leveldb version is %.2f\n", agent_server.Version)
 		return
 	}
 

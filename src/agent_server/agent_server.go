@@ -1,8 +1,8 @@
 package agent_server
 
 import (
-	"code.google.com/p/vitess/go/relog"
 	"bufio"
+	"code.google.com/p/vitess/go/relog"
 	"fmt"
 	"io"
 	"leveldb"
@@ -58,10 +58,11 @@ func newLeveldb() (*store, error) {
 
 func Run_server(laddr string) error {
 	listen_sock, err := net.Listen("tcp", laddr)
-	defer listen_sock.Close()
 	if err != nil {
 		panic(err)
 	}
+
+	defer listen_sock.Close()
 
 	sv := new(server)
 	store, err := newLeveldb()
@@ -83,6 +84,7 @@ func Run_server(laddr string) error {
 		c := newConn(conn, sv)
 
 		relog.Info("accept successed, client ip is %s", c.remoteAddr)
+
 		go c.serve()
 	}
 	panic("not reached")
@@ -113,14 +115,18 @@ func (c *conn) serve() {
 	}()
 
 	for {
+
+		c.rwc.SetReadDeadline(time.Now().Add(agent_read_timeout))
+		c.rwc.SetWriteDeadline(time.Now().Add(agent_write_timeout))
+
 		req, err := readRequest(c.rw.Reader)
 
 		if err != nil {
 			msg := "CLIENT_ERROR"
 			if err == io.EOF {
-				break // Don't reply
+				break
 			} else if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				break // Don't reply
+				break
 			}
 			fmt.Fprintf(c.rwc, "%s %s\r\n", msg, err)
 			continue
@@ -134,6 +140,8 @@ func (c *conn) serve() {
 
 		c.rw.Flush()
 	}
+
+	c.close()
 }
 
 func (c *conn) close() {
