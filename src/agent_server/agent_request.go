@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"code.google.com/p/vitess/go/relog"
 )
 
 type request struct {
@@ -58,8 +59,11 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 	param_count := len(f)
 	req.method = f[0]
 
+	relog.Info("request method is [%s]", req.method)
+
 	switch req.method {
 	case "set", "add", "replace":
+
 		var err error
 
 		if param_count < 4 || param_count > 5 {
@@ -89,6 +93,7 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 			return req, &badStringError{"invalid data size", string(req.value_len)}
 		}
 
+		req.value = make([][]byte, 1)
 		req.value[0], err = ioutil.ReadAll(io.LimitReader(b, int64(req.value_len)))
 		if err != nil {
 			return nil, err
@@ -130,11 +135,15 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 		if (l % 2) != 0 {
 			return req, &badStringError{"invalid request param count", string(param_count)}
 		}
+
 		req.key = make([]string, l / 2)
-		for i:= 1; i < l; i+=2  {
-			req.key[i] = f[i]
-			req.value[i] = []byte(f[i+1])
+		req.value = make([][]byte, l / 2)
+
+		for i, j := 0, 0; j < l; i,j = i+1, j+2 {
+			req.key[i] = f[j+1]
+			req.value[i] = []byte(f[j+2])
 		}
+
 	}
 
 	return req, nil

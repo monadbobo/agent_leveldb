@@ -129,6 +129,17 @@ func (ldb *Db) Delete(key []byte, w_options *Writeoptions) error {
 	return nil
 }
 
+func (ldb *Db) Write(w_options *Writeoptions, batch *Writebatch) error {
+	var db_err *C.char
+
+	C.leveldb_write(ldb.ldb, w_options.options, batch.wb, &db_err)
+	if db_err != nil {
+		return ldb_error(C.GoString(db_err))
+	}
+
+	return nil
+}
+
 func (ldb *Db) Close() {
 	C.leveldb_close(ldb.ldb)
 }

@@ -115,3 +115,8 @@ print data
 s.send("get test8\r\n")
 data = s.recv(1024)
 print data
+
+
+s.send("mset key1 \"Hello\" key2 \"World\"\r\n")
+data = s.recv(1024)
+print data

@@ -245,6 +245,14 @@ func (c *conn) handle_request(req *request) error {
 
 	case "set":
 		return c.set(req)
+	case "mset":
+		batch := leveldb.New_writebatch()
+		for i, key := range req.key {
+			batch.Put([]byte(key), req.value[i])
+		}
+		c.sv.s.db.Write(c.sv.s.wo, batch)
+
+		return c.write_status("STORED")
 	case "delete":
 		err := c.sv.s.db.Delete([]byte(req.key[0]), c.sv.s.wo)
 		if err != nil {
@@ -311,6 +319,7 @@ func process_action(ac chan action, sv *server) {
 }
 
 func (c *conn) set(req *request) error {
+
 	err := c.sv.s.db.Put([]byte(req.key[0]), req.value[0], c.sv.s.wo)
 	if err != nil {
 		err := c.write_status("SERVER_ERROR")
