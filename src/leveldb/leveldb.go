@@ -44,10 +44,6 @@ type Snapshot struct {
 	ldb_options *C.leveldb_snapshot_t
 }
 
-type Writebatch struct {
-	ldb_writebatch *C.leveldb_writebatch_t
-}
-
 type ldb_error string
 
 func (e ldb_error) Error() string {
@@ -70,7 +66,7 @@ func Open(name string, options *Options) (*Db, error) {
 
 func (ldb *Db) Put(key, value []byte, w_options *Writeoptions) error {
 	var db_err *C.char
-	
+
 	key_len := len(key)
 	value_len := len(value)
 	if key_len == 0 {
@@ -98,10 +94,10 @@ func (ldb *Db) Get(key []byte, read_option *Readoptions) ([]byte, error) {
 
 	key_len := len(key)
 	if key_len == 0 {
-		return nil, ldb_error("key must not empty");
+		return nil, ldb_error("key must not empty")
 	}
 
-	key_c := (*C.char) (unsafe.Pointer(&key[0]))
+	key_c := (*C.char)(unsafe.Pointer(&key[0]))
 	value := C.leveldb_get(ldb.ldb, read_option.options, key_c, C.size_t(key_len),
 		&value_len, &db_err)
 

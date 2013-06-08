@@ -311,7 +311,7 @@ func process_action(ac chan action, sv *server) {
 }
 
 func (c *conn) set(req *request) error {
-	err := c.sv.s.db.Put([]byte(req.key[0]), req.value, c.sv.s.wo)
+	err := c.sv.s.db.Put([]byte(req.key[0]), req.value[0], c.sv.s.wo)
 	if err != nil {
 		err := c.write_status("SERVER_ERROR")
 		return err

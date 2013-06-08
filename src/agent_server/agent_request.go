@@ -16,7 +16,7 @@ type request struct {
 	key       []string
 	exptime   time.Duration
 	value_len int
-	value     []byte
+	value     [][]byte
 	noreply   bool
 }
 
@@ -89,7 +89,7 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 			return req, &badStringError{"invalid data size", string(req.value_len)}
 		}
 
-		req.value, err = ioutil.ReadAll(io.LimitReader(b, int64(req.value_len)))
+		req.value[0], err = ioutil.ReadAll(io.LimitReader(b, int64(req.value_len)))
 		if err != nil {
 			return nil, err
 		}
@@ -123,6 +123,17 @@ func readRequest(b *bufio.Reader) (req *request, err error) {
 		req.exptime, err = time.ParseDuration(f[2])
 		if err != nil {
 			return req, &badStringError{"expire time is invalid", f[2]}
+		}
+
+	case "mset":
+		l := len(f) - 1
+		if (l % 2) != 0 {
+			return req, &badStringError{"invalid request param count", string(param_count)}
+		}
+		req.key = make([]string, l / 2)
+		for i:= 1; i < l; i+=2  {
+			req.key[i] = f[i]
+			req.value[i] = []byte(f[i+1])
 		}
 	}
 
